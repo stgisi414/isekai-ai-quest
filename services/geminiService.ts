@@ -4,11 +4,17 @@ import { Character, Language, Proficiency, Setting, StoryLog } from "../types";
 const API_KEY = process.env.API_KEY || ''; // In a real app, handle missing key gracefully
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
+const safetySettings = [
+  { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+  { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+  { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+  { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+];
+
 // --- Helper to convert Base64 to proper Image Part if needed ---
-// Note: gemini-3-pro-image-preview can accept prompt + base64 image for editing, 
-// but for this flow we primarily use text prompts enriched with descriptions, 
-// as managing full history of base64 images in browser memory can get heavy. 
-// We will generate fresh images based on strict prompt engineering.
+const getBase64FromUrl = (url: string): string => {
+  return url.split(',')[1] || '';
+};
 
 /**
  * Generates an Anime Character Reference Sheet
@@ -27,6 +33,7 @@ export const generateCharacterVisual = async (
         parts: [{ text: prompt }]
       },
       config: {
+        safetySettings,
         imageConfig: {
             aspectRatio: "1:1",
             imageSize: "1K"
@@ -62,6 +69,7 @@ export const generateSettingVisual = async (
       model: 'gemini-3-pro-image-preview',
       contents: { parts: [{ text: prompt }] },
       config: {
+        safetySettings,
         imageConfig: {
             aspectRatio: "16:9",
             imageSize: "1K"
@@ -78,6 +86,84 @@ export const generateSettingVisual = async (
   } catch (error) {
     console.error("Error generating setting visual:", error);
     return `https://picsum.photos/800/450?blur=2`;
+  }
+};
+
+/**
+ * Generates a random Anime Character Profile
+ */
+export const generateRandomCharacter = async (
+  language: Language
+): Promise<{ name: string; appearance: string }> => {
+  try {
+    const prompt = `Generate a unique, creative anime protagonist profile appropriate for a story in ${language}. 
+    The description should be visually detailed for an image generator.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+      config: {
+        safetySettings,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            appearance: { type: Type.STRING, description: "Detailed visual description including hair, eyes, clothing, and distinct features." }
+          },
+          required: ["name", "appearance"]
+        }
+      }
+    });
+
+    const json = JSON.parse(response.text || "{}");
+    return {
+      name: json.name || "Unknown Hero",
+      appearance: json.appearance || "A mysterious figure."
+    };
+  } catch (error) {
+    console.error("Error generating random character:", error);
+    return { name: "Hiro", appearance: "A generic anime protagonist with spiky hair." };
+  }
+};
+
+/**
+ * Generates a random Anime Setting Profile
+ */
+export const generateRandomSetting = async (
+  language: Language
+): Promise<{ name: string; appearance: string; atmosphere: string }> => {
+  try {
+    const prompt = `Generate a unique, creative anime setting (fantasy, sci-fi, or slice-of-life) appropriate for a story in ${language}. 
+    The description should be visually detailed.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+      config: {
+        safetySettings,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            appearance: { type: Type.STRING, description: "Detailed visual description of the environment." },
+            atmosphere: { type: Type.STRING, description: "Mood keywords (e.g. Eerie, Peaceful, Cyberpunk)" }
+          },
+          required: ["name", "appearance", "atmosphere"]
+        }
+      }
+    });
+
+    const json = JSON.parse(response.text || "{}");
+    return {
+      name: json.name || "Unknown World",
+      appearance: json.appearance || "A mysterious land.",
+      atmosphere: json.atmosphere || "Mysterious"
+    };
+  } catch (error) {
+    console.error("Error generating random setting:", error);
+    return { name: "Tokyo", appearance: "A busy city street.", atmosphere: "Energetic" };
   }
 };
 
@@ -113,6 +199,7 @@ export const generateNextStorySegment = async (
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
+        safetySettings,
         systemInstruction: systemInstruction,
         responseMimeType: "application/json",
         responseSchema: {
@@ -196,10 +283,27 @@ export const generateSceneIllustration = async (
       Style: Modern anime, cinematic lighting, highly detailed.
     `;
 
+    // Prepare reference images (Max 5 for humans)
+    const referenceParts = characters
+      .filter(c => c.referenceImageUrl && c.referenceImageUrl.startsWith('data:image'))
+      .slice(0, 5) // Limit to 5 human references
+      .map(c => ({
+        inlineData: {
+          mimeType: "image/png", // Assuming PNG as generated by us
+          data: getBase64FromUrl(c.referenceImageUrl!)
+        }
+      }));
+
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-image-preview',
-      contents: { parts: [{ text: prompt }] },
+      contents: { 
+        parts: [
+          { text: prompt },
+          ...referenceParts
+        ] 
+      },
       config: {
+        safetySettings,
         imageConfig: {
             aspectRatio: "16:9",
             imageSize: "1K"

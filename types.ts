@@ -10,6 +10,15 @@ export enum Proficiency {
   ADVANCED = 'Advanced',
 }
 
+export enum VoiceGender {
+  MALE = 'MALE',
+  FEMALE = 'FEMALE',
+}
+
+export interface StorySettings {
+  voiceGender: VoiceGender;
+}
+
 export interface Character {
   id: string;
   name: string;
@@ -71,4 +80,5 @@ export interface Story {
   settings: Setting[];
   plot: PlotState;
   logs: StoryLog[];
+  settings: StorySettings;
 }

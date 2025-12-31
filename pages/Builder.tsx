@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStory } from '../context/StoryContext';
-import { generateCharacterVisual, generateSettingVisual } from '../services/geminiService';
+import { generateCharacterVisual, generateSettingVisual, generateRandomCharacter, generateRandomSetting } from '../services/geminiService';
 import { Language, Proficiency } from '../types';
 import Button from '../components/Button';
-import { Sparkles, MapPin, User, ChevronRight } from 'lucide-react';
+import { Sparkles, MapPin, User, ChevronRight, Dices } from 'lucide-react';
 
 const Builder: React.FC = () => {
   const navigate = useNavigate();
@@ -25,6 +25,23 @@ const Builder: React.FC = () => {
   const [settingDesc, setSettingDesc] = useState('');
   const [settingAtmosphere, setSettingAtmosphere] = useState('');
   const [settingImg, setSettingImg] = useState<string | null>(null);
+
+  const handleAutoFillCharacter = async () => {
+    setLoading(true);
+    const profile = await generateRandomCharacter(language);
+    setCharName(profile.name);
+    setCharDesc(profile.appearance);
+    setLoading(false);
+  };
+
+  const handleAutoFillSetting = async () => {
+    setLoading(true);
+    const profile = await generateRandomSetting(language);
+    setSettingName(profile.name);
+    setSettingDesc(profile.appearance);
+    setSettingAtmosphere(profile.atmosphere);
+    setLoading(false);
+  };
 
   const handleGenerateCharacter = async () => {
     if (!charName || !charDesc) return;
@@ -70,7 +87,7 @@ const Builder: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-anime-dark text-white p-6 md:p-12">
+    <div className="w-full h-full flex-grow p-6 md:p-12">
       <div className="max-w-4xl mx-auto">
         <h2 className="text-3xl font-bold mb-8 flex items-center gap-2">
            <span className="text-anime-primary">Step {step}/3:</span> 
@@ -115,6 +132,16 @@ const Builder: React.FC = () => {
         {step === 2 && (
           <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-6">
+                <div className="flex justify-end">
+                    <Button 
+                        onClick={handleAutoFillCharacter} 
+                        disabled={loading} 
+                        variant="ghost" 
+                        className="text-sm text-anime-accent hover:text-pink-400"
+                    >
+                        <Dices size={16} className="mr-2" /> Surprise Me
+                    </Button>
+                </div>
                 <div>
                     <label className="block text-sm text-gray-400 mb-2">Character Name</label>
                     <input 
@@ -166,6 +193,16 @@ const Builder: React.FC = () => {
         {step === 3 && (
           <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-6">
+                <div className="flex justify-end">
+                    <Button 
+                        onClick={handleAutoFillSetting} 
+                        disabled={loading} 
+                        variant="ghost" 
+                        className="text-sm text-anime-accent hover:text-pink-400"
+                    >
+                        <Dices size={16} className="mr-2" /> Surprise Me
+                    </Button>
+                </div>
                 <div>
                     <label className="block text-sm text-gray-400 mb-2">Location Name</label>
                     <input 

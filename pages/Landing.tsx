@@ -7,7 +7,7 @@ const Landing: React.FC = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-anime-dark text-white overflow-hidden relative">
+    <div className="w-full h-full flex-grow relative overflow-hidden">
       {/* Background Decorative Blobs */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0">
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-anime-primary opacity-20 blur-[100px] rounded-full"></div>

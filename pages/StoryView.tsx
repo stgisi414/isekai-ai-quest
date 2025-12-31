@@ -82,22 +82,20 @@ const StoryView: React.FC = () => {
   if (!story) return null;
 
   return (
-    <div className="min-h-screen bg-anime-dark text-white flex flex-col">
-      {/* Sticky Header */}
-      <div className="fixed top-0 w-full z-50 bg-anime-dark/80 backdrop-blur-md border-b border-white/5 p-4 flex justify-between items-center">
-        <div>
-            <h1 className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-anime-primary to-anime-accent">
-                {story.plot.genre} in {story.language}
-            </h1>
-            <p className="text-xs text-gray-400">Proficiency: {story.proficiency}</p>
-        </div>
-        <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => navigate('/')}>Exit</Button>
-        </div>
+    <div className="flex flex-col flex-grow relative">
+      
+      {/* Story Info Bar */}
+      <div className="container mx-auto px-4 py-4 max-w-3xl border-b border-white/5 mb-4">
+          <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-anime-primary to-anime-accent inline-block mr-4">
+              {story.plot.genre} in {story.language}
+          </h1>
+          <span className="text-sm text-gray-400 bg-white/5 px-2 py-1 rounded">
+            Level: {story.proficiency}
+          </span>
       </div>
 
       {/* Main Content Feed */}
-      <div className="flex-1 container mx-auto px-4 py-24 max-w-3xl">
+      <div className="flex-1 container mx-auto px-4 pb-32 max-w-3xl">
         {story.logs.length === 0 && (
            <div className="text-center py-20 opacity-50">
              <p className="text-xl mb-4">Your adventure is about to begin...</p>
@@ -113,7 +111,7 @@ const StoryView: React.FC = () => {
       </div>
 
       {/* Bottom Controls */}
-      <div className="fixed bottom-0 w-full bg-gradient-to-t from-anime-dark via-anime-dark to-transparent pt-12 pb-6 px-4">
+      <div className="fixed bottom-0 left-0 w-full bg-gradient-to-t from-anime-dark via-anime-dark to-transparent pt-12 pb-6 px-4 z-40">
         <div className="max-w-xl mx-auto flex gap-4">
             <Button 
                 onClick={handleNext} 

@@ -1,20 +1,36 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { Character, Language, PlotState, Proficiency, Setting, Story, StoryLog } from '../types';
+import { Character, Language, PlotState, Proficiency, Setting, Story, StoryLog, StorySettings, VoiceGender } from '../types';
 
 interface StoryContextType {
   story: Story | null;
   initStory: (language: Language, proficiency: Proficiency) => void;
   updatePlot: (plot: Partial<PlotState>) => void;
+  updateSettings: (settings: Partial<StorySettings>) => void;
   addCharacter: (char: Character) => void;
   addSetting: (setting: Setting) => void;
   addLog: (log: StoryLog) => void;
   updateLog: (id: string, updates: Partial<StoryLog>) => void;
+  resetStory: () => void;
 }
 
 const StoryContext = createContext<StoryContextType | undefined>(undefined);
 
 export const StoryProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [story, setStory] = useState<Story | null>(null);
+  const [story, setStory] = useState<Story | null>(() => {
+    try {
+      const saved = localStorage.getItem('isekai_story_state');
+      return saved ? JSON.parse(saved) : null;
+    } catch (error) {
+      console.error('Failed to load story state from local storage:', error);
+      return null;
+    }
+  });
+
+  React.useEffect(() => {
+    if (story) {
+      localStorage.setItem('isekai_story_state', JSON.stringify(story));
+    }
+  }, [story]);
 
   const initStory = (language: Language, proficiency: Proficiency) => {
     setStory({
@@ -28,13 +44,21 @@ export const StoryProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         currentArc: 'Introduction',
         tone: 'Exciting'
       },
-      logs: []
+      logs: [],
+      settings: {
+        voiceGender: VoiceGender.FEMALE
+      }
     });
   };
 
   const updatePlot = (plotUpdates: Partial<PlotState>) => {
     if (!story) return;
     setStory(prev => prev ? { ...prev, plot: { ...prev.plot, ...plotUpdates } } : null);
+  };
+
+  const updateSettings = (settingsUpdates: Partial<StorySettings>) => {
+    if (!story) return;
+    setStory(prev => prev ? { ...prev, settings: { ...prev.settings, ...settingsUpdates } } : null);
   };
 
   const addCharacter = (char: Character) => {
@@ -59,8 +83,13 @@ export const StoryProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
   };
 
+  const resetStory = () => {
+    setStory(null);
+    localStorage.removeItem('isekai_story_state');
+  };
+
   return (
-    <StoryContext.Provider value={{ story, initStory, updatePlot, addCharacter, addSetting, addLog, updateLog }}>
+    <StoryContext.Provider value={{ story, initStory, updatePlot, updateSettings, addCharacter, addSetting, addLog, updateLog, resetStory }}>
       {children}
     </StoryContext.Provider>
   );
