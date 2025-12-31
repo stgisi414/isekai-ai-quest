@@ -1,62 +1,122 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStory } from '../context/StoryContext';
-import { generateCharacterVisual, generateSettingVisual, generateRandomCharacter, generateRandomSetting } from '../services/geminiService';
+import { useAuth } from '../context/AuthContext';
+import { generateCharacterVisual, generateSettingVisual, generateRandomCharacter, generateRandomSetting, magicWand } from '../services/geminiService';
+import { uploadBase64Image } from '../services/imageService';
 import { Language, Proficiency } from '../types';
 import Button from '../components/Button';
-import { Sparkles, MapPin, User, ChevronRight, Dices } from 'lucide-react';
+import { Sparkles, MapPin, User, ChevronRight, Dices, Loader2, Wand2 } from 'lucide-react';
+
+const BUILDER_STORAGE_KEY = 'isekai_builder_state';
+
+interface BuilderState {
+  step: number;
+  language: Language;
+  proficiency: Proficiency;
+  charName: string;
+  charGender: string;
+  charDesc: string;
+  charImg: string | null;
+  settingName: string;
+  settingDesc: string;
+  settingAtmosphere: string;
+  settingImg: string | null;
+}
 
 const Builder: React.FC = () => {
   const navigate = useNavigate();
   const { initStory, addCharacter, addSetting } = useStory();
+  const { user, login } = useAuth();
   
-  const [step, setStep] = useState(1);
+  const [state, setState] = useState<BuilderState>({
+    step: 1,
+    language: Language.JP,
+    proficiency: Proficiency.BEGINNER,
+    charName: '',
+    charGender: 'Female',
+    charDesc: '',
+    charImg: null,
+    settingName: '',
+    settingDesc: '',
+    settingAtmosphere: '',
+    settingImg: null
+  });
   const [loading, setLoading] = useState(false);
-  
-  // State for form
-  const [language, setLanguage] = useState<Language>(Language.JP);
-  const [proficiency, setProficiency] = useState<Proficiency>(Proficiency.BEGINNER);
-  
-  const [charName, setCharName] = useState('');
-  const [charDesc, setCharDesc] = useState('');
-  const [charImg, setCharImg] = useState<string | null>(null);
-  
-  const [settingName, setSettingName] = useState('');
-  const [settingDesc, setSettingDesc] = useState('');
-  const [settingAtmosphere, setSettingAtmosphere] = useState('');
-  const [settingImg, setSettingImg] = useState<string | null>(null);
+  const [wandLoading, setWandLoading] = useState<string | null>(null);
+
+  const updateState = (updates: Partial<BuilderState>) => {
+    setState(prev => ({ ...prev, ...updates }));
+  };
+
+  const { step, language, proficiency, charName, charGender, charDesc, charImg, settingName, settingDesc, settingAtmosphere, settingImg } = state;
+
+  if (!user) {
+    return (
+      <div className="flex-grow flex flex-col items-center justify-center p-6 text-center">
+        <h2 className="text-3xl font-bold mb-4">Adventurer Identity Required</h2>
+        <p className="text-gray-400 mb-8 max-w-md">You need to sign in to manifest your isekai journey and save your progress to the cloud.</p>
+        <Button onClick={login} variant="primary" className="px-8 py-4 text-lg">Sign In with Google</Button>
+      </div>
+    );
+  }
+
+  const handleMagicWand = async (field: 'name' | 'appearance' | 'settingName' | 'settingDesc' | 'atmosphere', current: string) => {
+    setWandLoading(field);
+    const newValue = await magicWand(field, current, language);
+    
+    const stateKeyMap: Record<string, keyof BuilderState> = {
+        name: 'charName',
+        appearance: 'charDesc',
+        settingName: 'settingName',
+        settingDesc: 'settingDesc',
+        atmosphere: 'settingAtmosphere'
+    };
+
+    updateState({ [stateKeyMap[field]]: newValue } as any);
+    setWandLoading(null);
+  };
 
   const handleAutoFillCharacter = async () => {
     setLoading(true);
-    const profile = await generateRandomCharacter(language);
-    setCharName(profile.name);
-    setCharDesc(profile.appearance);
+    const profile = await generateRandomCharacter(language, charGender);
+    updateState({ charName: profile.name, charDesc: profile.appearance });
     setLoading(false);
   };
 
   const handleAutoFillSetting = async () => {
     setLoading(true);
     const profile = await generateRandomSetting(language);
-    setSettingName(profile.name);
-    setSettingDesc(profile.appearance);
-    setSettingAtmosphere(profile.atmosphere);
+    updateState({ 
+        settingName: profile.name, 
+        settingDesc: profile.appearance, 
+        settingAtmosphere: profile.atmosphere 
+    });
     setLoading(false);
   };
 
   const handleGenerateCharacter = async () => {
     if (!charName || !charDesc) return;
     setLoading(true);
-    const url = await generateCharacterVisual(charName, charDesc);
-    setCharImg(url);
-    setLoading(false);
+    try {
+        const base64 = await generateCharacterVisual(charName, charDesc);
+        const url = await uploadBase64Image(base64, 'characters');
+        updateState({ charImg: url });
+    } finally {
+        setLoading(false);
+    }
   };
 
   const handleGenerateSetting = async () => {
     if (!settingName || !settingDesc) return;
     setLoading(true);
-    const url = await generateSettingVisual(settingName, settingDesc, settingAtmosphere);
-    setSettingImg(url);
-    setLoading(false);
+    try {
+        const base64 = await generateSettingVisual(settingName, settingDesc, settingAtmosphere);
+        const url = await uploadBase64Image(base64, 'settings');
+        updateState({ settingImg: url });
+    } finally {
+        setLoading(false);
+    }
   };
 
   const handleFinish = () => {
@@ -72,15 +132,19 @@ const Builder: React.FC = () => {
       });
     }
 
+    const settingId = crypto.randomUUID();
     if (settingName) {
       addSetting({
-        id: crypto.randomUUID(),
+        id: settingId,
         name: settingName,
         appearance: settingDesc,
         atmosphere: settingAtmosphere,
         referenceImageUrl: settingImg || undefined
       });
     }
+
+    // Clear builder state
+    localStorage.removeItem(BUILDER_STORAGE_KEY);
 
     // Small delay to ensure state updates
     setTimeout(() => navigate('/story/active'), 100);
@@ -101,7 +165,7 @@ const Builder: React.FC = () => {
               {Object.values(Language).map((lang) => (
                 <div 
                     key={lang}
-                    onClick={() => setLanguage(lang)}
+                    onClick={() => updateState({ language: lang })}
                     className={`p-6 rounded-xl border cursor-pointer transition-all ${language === lang ? 'border-anime-primary bg-anime-primary/20 ring-2 ring-anime-primary' : 'border-gray-700 bg-gray-800 hover:bg-gray-700'}`}
                 >
                     <h3 className="text-xl font-bold text-center">{lang}</h3>
@@ -115,7 +179,7 @@ const Builder: React.FC = () => {
                   {Object.values(Proficiency).map((level) => (
                       <button 
                         key={level}
-                        onClick={() => setProficiency(level)}
+                        onClick={() => updateState({ proficiency: level })}
                         className={`px-4 py-2 rounded-full border text-sm ${proficiency === level ? 'border-anime-accent bg-anime-accent/20 text-anime-accent' : 'border-gray-600 text-gray-400'}`}
                       >
                           {level}
@@ -124,7 +188,7 @@ const Builder: React.FC = () => {
               </div>
             </div>
 
-            <Button onClick={() => setStep(2)} className="w-full mt-8">Next Step <ChevronRight /></Button>
+            <Button onClick={() => updateState({ step: 2 })} className="w-full mt-8">Next Step <ChevronRight /></Button>
           </div>
         )}
 
@@ -132,7 +196,22 @@ const Builder: React.FC = () => {
         {step === 2 && (
           <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-6">
-                <div className="flex justify-end">
+                <div className="flex justify-end items-center gap-4">
+                    <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700">
+                        {['Male', 'Female', 'NB'].map((g) => (
+                            <button
+                                key={g}
+                                onClick={() => updateState({ charGender: g })}
+                                className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                                    charGender === g 
+                                    ? 'bg-anime-primary text-white shadow-md' 
+                                    : 'text-gray-500 hover:text-gray-300'
+                                }`}
+                            >
+                                {g}
+                            </button>
+                        ))}
+                    </div>
                     <Button 
                         onClick={handleAutoFillCharacter} 
                         disabled={loading} 
@@ -143,20 +222,40 @@ const Builder: React.FC = () => {
                     </Button>
                 </div>
                 <div>
-                    <label className="block text-sm text-gray-400 mb-2">Character Name</label>
+                    <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm text-gray-400">Character Name</label>
+                        <button 
+                            onClick={() => handleMagicWand('name', charName)}
+                            disabled={!!wandLoading}
+                            className={`text-anime-primary hover:text-indigo-400 transition-colors ${wandLoading === 'name' ? 'animate-spin' : ''}`}
+                            title="AI Generate/Enhance"
+                        >
+                            <Wand2 size={16} />
+                        </button>
+                    </div>
                     <input 
                         className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 focus:border-anime-primary outline-none transition-colors"
                         value={charName}
-                        onChange={(e) => setCharName(e.target.value)}
+                        onChange={(e) => updateState({ charName: e.target.value })}
                         placeholder="e.g. Akira"
                     />
                 </div>
                 <div>
-                    <label className="block text-sm text-gray-400 mb-2">Visual Description</label>
+                    <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm text-gray-400">Visual Description</label>
+                        <button 
+                            onClick={() => handleMagicWand('appearance', charDesc)}
+                            disabled={!!wandLoading}
+                            className={`text-anime-primary hover:text-indigo-400 transition-colors ${wandLoading === 'appearance' ? 'animate-spin' : ''}`}
+                            title="AI Generate/Enhance"
+                        >
+                            <Wand2 size={16} />
+                        </button>
+                    </div>
                     <textarea 
                         className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 h-32 focus:border-anime-primary outline-none transition-colors"
                         value={charDesc}
-                        onChange={(e) => setCharDesc(e.target.value)}
+                        onChange={(e) => updateState({ charDesc: e.target.value })}
                         placeholder="e.g. Spiky blue hair, cybernetic arm, wearing a trenchcoat. Intense eyes."
                     />
                 </div>
@@ -183,8 +282,8 @@ const Builder: React.FC = () => {
             </div>
             
             <div className="col-span-1 md:col-span-2 flex justify-between mt-4">
-                 <Button variant="ghost" onClick={() => setStep(1)}>Back</Button>
-                 <Button onClick={() => setStep(3)} disabled={!charImg}>Next Step <ChevronRight /></Button>
+                 <Button variant="ghost" onClick={() => updateState({ step: 1 })}>Back</Button>
+                 <Button onClick={() => updateState({ step: 3 })} disabled={!charImg}>Next Step <ChevronRight /></Button>
             </div>
           </div>
         )}
@@ -204,29 +303,59 @@ const Builder: React.FC = () => {
                     </Button>
                 </div>
                 <div>
-                    <label className="block text-sm text-gray-400 mb-2">Location Name</label>
+                    <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm text-gray-400">Location Name</label>
+                        <button 
+                            onClick={() => handleMagicWand('settingName', settingName)}
+                            disabled={!!wandLoading}
+                            className={`text-anime-primary hover:text-indigo-400 transition-colors ${wandLoading === 'settingName' ? 'animate-spin' : ''}`}
+                            title="AI Generate/Enhance"
+                        >
+                            <Wand2 size={16} />
+                        </button>
+                    </div>
                     <input 
                         className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 focus:border-anime-primary outline-none transition-colors"
                         value={settingName}
-                        onChange={(e) => setSettingName(e.target.value)}
+                        onChange={(e) => updateState({ settingName: e.target.value })}
                         placeholder="e.g. Neo-Tokyo Sector 7"
                     />
                 </div>
                 <div>
-                    <label className="block text-sm text-gray-400 mb-2">Visual Description</label>
+                    <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm text-gray-400">Visual Description</label>
+                        <button 
+                            onClick={() => handleMagicWand('settingDesc', settingDesc)}
+                            disabled={!!wandLoading}
+                            className={`text-anime-primary hover:text-indigo-400 transition-colors ${wandLoading === 'settingDesc' ? 'animate-spin' : ''}`}
+                            title="AI Generate/Enhance"
+                        >
+                            <Wand2 size={16} />
+                        </button>
+                    </div>
                     <textarea 
                         className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 h-24 focus:border-anime-primary outline-none transition-colors"
                         value={settingDesc}
-                        onChange={(e) => setSettingDesc(e.target.value)}
+                        onChange={(e) => updateState({ settingDesc: e.target.value })}
                         placeholder="e.g. Narrow alleyway filled with neon signs, raining, steam rising from vents."
                     />
                 </div>
                 <div>
-                    <label className="block text-sm text-gray-400 mb-2">Atmosphere</label>
+                    <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm text-gray-400">Atmosphere</label>
+                        <button 
+                            onClick={() => handleMagicWand('atmosphere', settingAtmosphere)}
+                            disabled={!!wandLoading}
+                            className={`text-anime-primary hover:text-indigo-400 transition-colors ${wandLoading === 'atmosphere' ? 'animate-spin' : ''}`}
+                            title="AI Generate/Enhance"
+                        >
+                            <Wand2 size={16} />
+                        </button>
+                    </div>
                     <input 
                         className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 focus:border-anime-primary outline-none transition-colors"
                         value={settingAtmosphere}
-                        onChange={(e) => setSettingAtmosphere(e.target.value)}
+                        onChange={(e) => updateState({ settingAtmosphere: e.target.value })}
                         placeholder="e.g. Mysterious, Dangerous, Cozy"
                     />
                 </div>
@@ -253,7 +382,7 @@ const Builder: React.FC = () => {
             </div>
 
             <div className="col-span-1 md:col-span-2 flex justify-between mt-4">
-                 <Button variant="ghost" onClick={() => setStep(2)}>Back</Button>
+                 <Button variant="ghost" onClick={() => updateState({ step: 2 })}>Back</Button>
                  <Button onClick={handleFinish} disabled={!settingImg} className="bg-green-600 hover:bg-green-500 shadow-green-500/30">Start Story</Button>
             </div>
           </div>
